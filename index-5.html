@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>城市公共空间空气基础设施运营平台</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.7/dist/axios.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+
+        /* 根容器：铺满整个视口并居中内容 */
+        html {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(135deg, #0a1929 0%, #0f2847 50%, #0a1929 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 大屏基础容器：固定16:9基础尺寸(1920×1080)，通过transform缩放 */
+        body {
+            width: 1920px;
+            height: 1080px;
+            color: #ffffff;
+            position: relative;
+            transform-origin: center center; /* 缩放原点在中心 */
+        }
+
+        /* 背景网格铺满整个浏览器窗口 */
+        html::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: 
+                linear-gradient(rgba(0, 100, 200, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 100, 200, 0.05) 1px, transparent 1px);
+            background-size: 50px 50px;
+            z-index: -1;
+        }
+
+        .dashboard-container {
+            width: 1920px;
+            height: 1080px;
+            margin: 0 auto;
+            padding: 15px;
+            display: grid;
+            grid-template-columns: 280px 1330px 280px;
+            grid-template-rows: 60px 655px 320px;
+            gap: 15px;
+        }
+
+        /* 顶部标题栏 */
+        .header {
+            grid-column: 1 / -1;
+            text-align: center;
+            position: relative;
+            height: 60px;
+            line-height: 60px;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            color: #4cc9f0;
+            text-shadow: 0 0 10px rgba(76, 201, 240, 0.5);
+            letter-spacing: 2px;
+            font-weight: bold;
+        }
+
+        .current-time {
+            position: absolute;
+            right: 20px;
+            top: 0;
+            height: 60px;
+            line-height: 60px;
+            font-size: 18px;
+            color: #94a3b8;
+        }
+
+        /* 通用卡片样式 */
+        .card {
+            background: rgba(15, 40, 71, 0.8);
+            border: 1px solid rgba(64, 158, 255, 0.3);
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 0 15px rgba(0, 100, 200, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 卡片四角装饰 */
+        .card::before, .card::after,
+        .card .corner-bl, .card .corner-br {
+            content: '';
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            border: 2px solid #4cc9f0;
+        }
+
+        .card::before {
+            top: -1px;
+            left: -1px;
+            border-width: 2px 0 0 2px;
+        }
+
+        .card::after {
+            top: -1px;
+            right: -1px;
+            border-width: 2px 2px 0 0;
+        }
+
+        .card .corner-bl {
+            bottom: -1px;
+            left: -1px;
+            border-width: 0 0 2px 2px;
+        }
+
+        .card .corner-br {
+            bottom: -1px;
+            right: -1px;
+            border-width: 0 2px 2px 0;
+        }
+
+        .card-title {
+            font-size: 16px;
+            color: #4cc9f0;
+            margin-bottom: 15px;
+            text-align: center;
+            background: linear-gradient(90deg, transparent, rgba(64, 158, 255, 0.2), transparent);
+            padding: 5px 0;
+            border-radius: 4px;
+            height: 30px;
+            line-height: 20px;
+        }
+
+        .chart-container {
+            width: 100%;
+            height: 260px;
+        }
+
+        /* 左侧列 */
+        .left-column {
+            display: grid;
+            grid-template-rows: 320px 320px 320px;
+            gap: 15px;
+        }
+
+        /* 中间列 */
+        .middle-column {
+            display: grid;
+            grid-template-rows: 655px 320px;
+            gap: 15px;
+        }
+
+        .map-container {
+            height: 655px;
+        }
+
+        .map-container .chart-container {
+            height: 595px;
+        }
+
+        .bottom-cards {
+            display: grid;
+            grid-template-columns: 657px 658px;
+            gap: 15px;
+        }
+
+        /* 右侧列 */
+        .right-column {
+            display: grid;
+            grid-template-rows: 320px 320px 320px;
+            gap: 15px;
+        }
+
+        /* 设备状态卡片特殊样式 */
+        .status-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            height: 260px;
+            align-items: center;
+        }
+
+        .status-item {
+            text-align: center;
+            padding: 20px 10px;
+            background: rgba(0, 50, 100, 0.3);
+            border-radius: 6px;
+            border: 1px solid rgba(64, 158, 255, 0.2);
+        }
+
+        .status-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .status-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4cc9f0;
+        }
+
+        .status-label {
+            font-size: 14px;
+            color: #94a3b8;
+            margin-top: 5px;
+        }
+
+        /* 子系统标签 */
+        .subsystem-label {
+            position: absolute;
+            top: 10px;
+            left: 15px;
+            font-size: 12px;
+            color: #94a3b8;
+            z-index: 10;
+        }
+
+        /* 数据来源 */
+        .data-source {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 12px;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- 顶部标题 -->
+        <div class="header">
+            <h1>城市公共空间空气基础设施运营平台</h1>
+            <div class="current-time" id="current-time"></div>
+        </div>
+
+        <!-- 左侧列 -->
+        <div class="left-column">
+            <!-- 气味监测 -->
+            <div class="card">
+                <div class="subsystem-label">子系统A | 气味基础设施</div>
+                <div class="card-title">气味监测</div>
+                <div class="chart-container" id="odor-chart"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+
+            <!-- 设备在线率 -->
+            <div class="card">
+                <div class="card-title">设备在线率</div>
+                <div class="chart-container" id="online-rate-chart"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+
+            <!-- 用户满意率 -->
+            <div class="card">
+                <div class="card-title">用户满意率</div>
+                <div class="chart-container" id="satisfaction-chart"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+        </div>
+
+        <!-- 中间列 -->
+        <div class="middle-column">
+            <!-- 深圳地图 -->
+            <div class="card map-container">
+                <div class="card-title">当前【深圳市】</div>
+                <div class="chart-container" id="shenzhen-map"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+
+            <!-- 底部两个卡片 -->
+            <div class="bottom-cards">
+                <!-- 单位面积用量 -->
+                <div class="card">
+                    <div class="card-title">单位面积用量</div>
+                    <div class="chart-container" id="usage-chart"></div>
+                    <div class="corner-bl"></div>
+                    <div class="corner-br"></div>
+                </div>
+
+                <!-- 设备状态 -->
+                <div class="card">
+                    <div class="card-title">设备状态</div>
+                    <div class="status-cards">
+                        <div class="status-item">
+                            <div class="status-icon">🔔</div>
+                            <div class="status-value" id="alarm-count">100</div>
+                            <div class="status-label">报警次数</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-icon">✅</div>
+                            <div class="status-value" id="handled-count">95</div>
+                            <div class="status-label">报警处理</div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-icon">⏱️</div>
+                            <div class="status-value" id="avg-time">2</div>
+                            <div class="status-label">平均处理时间(分钟)</div>
+                        </div>
+                    </div>
+                    <div class="data-source">数据来源：秉弘城市公共空间空气基础设施运营平台</div>
+                    <div class="corner-bl"></div>
+                    <div class="corner-br"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧列 -->
+        <div class="right-column">
+            <!-- 空气质量监测 -->
+            <div class="card">
+                <div class="subsystem-label">子系统B | IAQ基础设施</div>
+                <div class="card-title">空气质量监测</div>
+                <div class="chart-container" id="air-quality-chart"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+
+            <!-- 监测设备 -->
+            <div class="card">
+                <div class="card-title">监测设备</div>
+                <div class="chart-container" id="device-chart"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+
+            <!-- 空气达标率 -->
+            <div class="card">
+                <div class="card-title">空气达标率</div>
+                <div class="chart-container" id="compliance-chart"></div>
+                <div class="corner-bl"></div>
+                <div class="corner-br"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 初始化所有图表
+        let odorChart, onlineRateChart, satisfactionChart, shenzhenMap, usageChart, airQualityChart, deviceChart, complianceChart;
+
+        // 核心函数：自动缩放大屏保持16:9比例并居中
+        function scaleDashboard() {
+            const dashboard = document.body;
+            const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
+            
+            // 计算缩放比例：取宽高比的较小值，确保整个大屏都能显示
+            const scaleX = windowWidth / 1920;
+            const scaleY = windowHeight / 1080;
+            const scale = Math.min(scaleX, scaleY);
+            
+            // 应用缩放
+            dashboard.style.transform = `scale(${scale})`;
+            
+            // 重绘所有图表以适应缩放后的尺寸
+            odorChart && odorChart.resize();
+            onlineRateChart && onlineRateChart.resize();
+            satisfactionChart && satisfactionChart.resize();
+            shenzhenMap && shenzhenMap.resize();
+            usageChart && usageChart.resize();
+            airQualityChart && airQualityChart.resize();
+            deviceChart && deviceChart.resize();
+            complianceChart && complianceChart.resize();
+        }
+
+        // 初始化图表
+        function initCharts() {
+            odorChart = echarts.init(document.getElementById('odor-chart'));
+            onlineRateChart = echarts.init(document.getElementById('online-rate-chart'));
+            satisfactionChart = echarts.init(document.getElementById('satisfaction-chart'));
+            shenzhenMap = echarts.init(document.getElementById('shenzhen-map'));
+            usageChart = echarts.init(document.getElementById('usage-chart'));
+            airQualityChart = echarts.init(document.getElementById('air-quality-chart'));
+            deviceChart = echarts.init(document.getElementById('device-chart'));
+            complianceChart = echarts.init(document.getElementById('compliance-chart'));
+
+            // 加载深圳地图数据
+            axios.get('https://geo.datav.aliyun.com/areas_v3/bound/440300_full.json')
+                .then(function(response) {
+                    echarts.registerMap('shenzhen', response.data);
+                    updateMap();
+                })
+                .catch(function(error) {
+                    console.log('地图加载失败，使用备用方案:', error);
+                    // 地图加载失败时显示提示
+                    shenzhenMap.setOption({
+                        title: {
+                            text: '深圳地图加载中...',
+                            left: 'center',
+                            top: 'center',
+                            textStyle: {
+                                color: '#fff',
+                                fontSize: 24
+                            }
+                        }
+                    });
+                });
+
+            // 初始化所有图表
+            updateOdorChart();
+            updateOnlineRateChart();
+            updateSatisfactionChart();
+            updateUsageChart();
+            updateAirQualityChart();
+            updateDeviceChart();
+            updateComplianceChart();
+            
+            // 初始化缩放
+            scaleDashboard();
+        }
+
+        // 气味监测折线图
+        function updateOdorChart() {
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    }
+                },
+                legend: {
+                    data: ['NH3', 'H2S', 'NH3浓度限', 'H2S浓度限'],
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    },
+                    bottom: 0
+                },
+                grid: {
+                    left: '10%',
+                    right: '5%',
+                    top: '10%',
+                    bottom: '25%'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: ['测点1', '测点2', '测点3', '测点4'],
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    }
+                },
+                yAxis: {
+                    type: 'value',
+                    max: 7,
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    },
+                    splitLine: {
+                        lineStyle: {
+                            color: 'rgba(100, 116, 139, 0.2)'
+                        }
+                    }
+                },
+                series: [
+                    {
+                        name: 'NH3',
+                        type: 'line',
+                        data: [3, 5, 2, 4],
+                        lineStyle: {
+                            width: 2,
+                            color: '#4361ee'
+                        },
+                        symbol: 'circle',
+                        symbolSize: 6
+                    },
+                    {
+                        name: 'H2S',
+                        type: 'line',
+                        data: [2, 4, 1, 3],
+                        lineStyle: {
+                            width: 2,
+                            color: '#f77f00'
+                        },
+                        symbol: 'circle',
+                        symbolSize: 6
+                    },
+                    {
+                        name: 'NH3浓度限',
+                        type: 'line',
+                        data: [6, 6, 6, 6],
+                        lineStyle: {
+                            width: 2,
+                            color: '#ffd60a',
+                            type: 'dashed'
+                        },
+                        symbol: 'none'
+                    },
+                    {
+                        name: 'H2S浓度限',
+                        type: 'line',
+                        data: [5, 5, 5, 5],
+                        lineStyle: {
+                            width: 2,
+                            color: '#70e000',
+                            type: 'dashed'
+                        },
+                        symbol: 'none'
+                    }
+                ]
+            };
+            odorChart.setOption(option);
+        }
+
+        // 设备在线率环形图
+        function updateOnlineRateChart() {
+            const working = Math.floor(Math.random() * 50) + 370; // 370-420
+            const standby = Math.floor(Math.random() * 100) + 1200; // 1200-1300
+            const offline = Math.floor(Math.random() * 20) + 25; // 25-45
+
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    }
+                },
+                legend: {
+                    data: ['待机', '工作中', '离线'],
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    },
+                    bottom: 0
+                },
+                series: [
+                    {
+                        name: '设备状态',
+                        type: 'pie',
+                        radius: ['50%', '70%'],
+                        center: ['50%', '45%'],
+                        avoidLabelOverlap: false,
+                        label: {
+                            show: false,
+                            position: 'center'
+                        },
+                        emphasis: {
+                            label: {
+                                show: true,
+                                fontSize: '16',
+                                fontWeight: 'bold',
+                                formatter: '{b}\n{c}台'
+                            }
+                        },
+                        labelLine: {
+                            show: false
+                        },
+                        data: [
+                            { value: standby, name: '待机', itemStyle: { color: '#4361ee' } },
+                            { value: working, name: '工作中', itemStyle: { color: '#4cc9f0' } },
+                            { value: offline, name: '离线', itemStyle: { color: '#f77f00' } }
+                        ]
+                    }
+                ],
+                graphic: [
+                    {
+                        type: 'text',
+                        left: 'center',
+                        top: '55%',
+                        style: {
+                            text: `工作中: ${working} 台\n待机: ${standby} 台\n离线: ${offline} 台`,
+                            textAlign: 'center',
+                            fill: '#fff',
+                            fontSize: 13
+                        }
+                    }
+                ]
+            };
+            onlineRateChart.setOption(option);
+        }
+
+        // 用户满意率条形图
+        function updateSatisfactionChart() {
+            const months = ['1月', '2月', '3月', '4月'];
+            const colors = ['#4361ee', '#4cc9f0', '#38b000', '#ffd60a', '#f77f00'];
+            const points = ['测点1', '测点2', '测点3', '测点4', '测点5'];
+
+            const series = [];
+            for (let i = 0; i < 5; i++) {
+                series.push({
+                    name: points[i],
+                    type: 'bar',
+                    data: months.map(() => Math.floor(Math.random() * 6) + 93), // 93-99
+                    barWidth: 8,
+                    itemStyle: {
+                        color: colors[i]
+                    }
+                });
+            }
+
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    }
+                },
+                legend: {
+                    data: points,
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 11
+                    },
+                    bottom: 0
+                },
+                grid: {
+                    left: '10%',
+                    right: '5%',
+                    top: '10%',
+                    bottom: '25%'
+                },
+                xAxis: {
+                    type: 'value',
+                    min: 93,
+                    max: 100,
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12,
+                        formatter: '{value}%'
+                    },
+                    splitLine: {
+                        lineStyle: {
+                            color: 'rgba(100, 116, 139, 0.2)'
+                        }
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: months,
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    }
+                },
+                series: series
+            };
+            satisfactionChart.setOption(option);
+        }
+
+        // 深圳地图
+        function updateMap() {
+            const districts = [
+                { name: '福田区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '罗湖区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '南山区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '盐田区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '宝安区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '龙岗区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '龙华区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '坪山区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '光明区', value: Math.floor(Math.random() * 50) + 50 },
+                { name: '大鹏新区', value: Math.floor(Math.random() * 50) + 50 }
+            ];
+
+            // 监测点位置（根据深圳各区大致位置）
+            const monitorPoints = [
+                { name: '', value: [113.92, 22.80], itemStyle: { color: '#f77f00' } },
+                { name: '宝安区', value: [113.82, 22.63], itemStyle: { color: '#38b000' } },
+                { name: '龙华区', value: [114.02, 22.68], itemStyle: { color: '#38b000' } },
+                { name: '龙岗区', value: [114.25, 22.72], itemStyle: { color: '#f77f00' } },
+                { name: '坪山区', value: [114.35, 22.70], itemStyle: { color: '#38b000' } },
+                { name: '福田区', value: [114.05, 22.53], itemStyle: { color: '#f77f00' } },
+                { name: '南山区', value: [113.92, 22.53], itemStyle: { color: '#38b000' } },
+                { name: '罗湖区', value: [114.13, 22.55], itemStyle: { color: '#38b000' } },
+                { name: '盐田区', value: [114.23, 22.58], itemStyle: { color: '#f77f00' } }
+            ];
+
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    },
+                    formatter: function(params) {
+                        if (params.componentType === 'series' && params.seriesType === 'scatter') {
+                            return params.name + '<br/>监测点在线';
+                        }
+                        return params.name + '<br/>AQI: ' + params.value;
+                    }
+                },
+                geo: {
+                    map: 'shenzhen',
+                    roam: false,
+                    zoom: 1.2,
+                    label: {
+                        show: true,
+                        color: '#fff',
+                        fontSize: 14
+                    },
+                    itemStyle: {
+                        areaColor: '#1e3a5f',
+                        borderColor: '#4cc9f0'
+                    },
+                    emphasis: {
+                        itemStyle: {
+                            areaColor: '#2a4d7a'
+                        }
+                    }
+                },
+                series: [
+                    {
+                        name: 'AQI',
+                        type: 'map',
+                        map: 'shenzhen',
+                        geoIndex: 0,
+                        data: districts
+                    },
+                    {
+                        name: '监测点',
+                        type: 'scatter',
+                        coordinateSystem: 'geo',
+                        symbolSize: 12,
+                        data: monitorPoints,
+                        label: {
+                            show: true,
+                            formatter: '{b}',
+                            position: 'right',
+                            color: '#fff',
+                            fontSize: 12
+                        }
+                    }
+                ]
+            };
+            shenzhenMap.setOption(option);
+        }
+
+        // 单位面积用量饼图
+        function updateUsageChart() {
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    }
+                },
+                legend: {
+                    orient: 'vertical',
+                    left: 'left',
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    }
+                },
+                series: [
+                    {
+                        name: '单位面积用量',
+                        type: 'pie',
+                        radius: ['40%', '70%'],
+                        center: ['60%', '50%'],
+                        data: [
+                            { value: 36, name: '测点1', itemStyle: { color: '#4361ee' } },
+                            { value: 32, name: '测点2', itemStyle: { color: '#4cc9f0' } },
+                            { value: 28, name: '测点3', itemStyle: { color: '#38b000' } },
+                            { value: 25, name: '测点4', itemStyle: { color: '#ffd60a' } },
+                            { value: 30, name: '测点5', itemStyle: { color: '#f77f00' } }
+                        ],
+                        label: {
+                            show: true,
+                            formatter: '{b}\n{c}',
+                            fontSize: 12
+                        },
+                        labelLine: {
+                            length: 10,
+                            length2: 10
+                        }
+                    }
+                ]
+            };
+            usageChart.setOption(option);
+        }
+
+        // 空气质量监测柱状图
+        function updateAirQualityChart() {
+            const points = ['测点1', '测点2', '测点3', '测点4', '测点5'];
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    }
+                },
+                legend: {
+                    data: ['CO2', 'TVOC', 'PM2.5', 'PM10', '温度'],
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 11
+                    },
+                    top: 0
+                },
+                grid: {
+                    left: '10%',
+                    right: '5%',
+                    top: '20%',
+                    bottom: '10%'
+                },
+                xAxis: {
+                    type: 'category',
+                    data: points,
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    }
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '浓度',
+                        max: 25,
+                        axisLine: {
+                            lineStyle: {
+                                color: '#64748b'
+                            }
+                        },
+                        axisLabel: {
+                            color: '#94a3b8',
+                            fontSize: 12
+                        },
+                        splitLine: {
+                            lineStyle: {
+                                color: 'rgba(100, 116, 139, 0.2)'
+                            }
+                        }
+                    },
+                    {
+                        type: 'value',
+                        name: '温度(℃)',
+                        max: 25,
+                        axisLine: {
+                            lineStyle: {
+                                color: '#64748b'
+                            }
+                        },
+                        axisLabel: {
+                            color: '#94a3b8',
+                            fontSize: 12
+                        },
+                        splitLine: {
+                            show: false
+                        }
+                    }
+                ],
+                series: [
+                    {
+                        name: 'CO2',
+                        type: 'bar',
+                        data: points.map(() => Math.floor(Math.random() * 10) + 10),
+                        barWidth: 6,
+                        itemStyle: {
+                            color: '#4361ee'
+                        }
+                    },
+                    {
+                        name: 'TVOC',
+                        type: 'bar',
+                        data: points.map(() => Math.floor(Math.random() * 8) + 8),
+                        barWidth: 6,
+                        itemStyle: {
+                            color: '#4cc9f0'
+                        }
+                    },
+                    {
+                        name: 'PM2.5',
+                        type: 'bar',
+                        data: points.map(() => Math.floor(Math.random() * 6) + 5),
+                        barWidth: 6,
+                        itemStyle: {
+                            color: '#38b000'
+                        }
+                    },
+                    {
+                        name: 'PM10',
+                        type: 'bar',
+                        data: points.map(() => Math.floor(Math.random() * 8) + 15),
+                        barWidth: 6,
+                        itemStyle: {
+                            color: '#ffd60a'
+                        }
+                    },
+                    {
+                        name: '温度',
+                        type: 'line',
+                        yAxisIndex: 1,
+                        data: points.map(() => Math.floor(Math.random() * 5) + 20),
+                        lineStyle: {
+                            width: 2,
+                            color: '#f77f00'
+                        },
+                        symbol: 'circle',
+                        symbolSize: 6
+                    }
+                ]
+            };
+            airQualityChart.setOption(option);
+        }
+
+        // 监测设备条形图
+        function updateDeviceChart() {
+            const points = ['测点1', '测点2', '测点3', '测点4', '测点5'];
+
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    }
+                },
+                legend: {
+                    data: ['在线率', '平均反应时间'],
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    },
+                    top: 0
+                },
+                grid: {
+                    left: '15%',
+                    right: '5%',
+                    top: '15%',
+                    bottom: '10%'
+                },
+                xAxis: {
+                    type: 'value',
+                    max: 200,
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    },
+                    splitLine: {
+                        lineStyle: {
+                            color: 'rgba(100, 116, 139, 0.2)'
+                        }
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: points,
+                    axisLine: {
+                        lineStyle: {
+                            color: '#64748b'
+                        }
+                    },
+                    axisLabel: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    }
+                },
+                series: [
+                    {
+                        name: '在线率',
+                        type: 'bar',
+                        data: points.map(() => Math.floor(Math.random() * 50) + 100),
+                        barWidth: 10,
+                        itemStyle: {
+                            color: '#4361ee'
+                        }
+                    },
+                    {
+                        name: '平均反应时间',
+                        type: 'bar',
+                        data: points.map(() => Math.floor(Math.random() * 80) + 80),
+                        barWidth: 10,
+                        itemStyle: {
+                            color: '#4cc9f0'
+                        }
+                    }
+                ]
+            };
+            deviceChart.setOption(option);
+        }
+
+        // 空气达标率环形图
+        function updateComplianceChart() {
+            const colors = ['#4361ee', '#4cc9f0', '#38b000', '#ffd60a', '#f77f00'];
+            const points = ['测点1', '测点2', '测点3', '测点4', '测点5'];
+            const data = points.map((name, index) => ({
+                value: Math.floor(Math.random() * 10) + 85, // 85-95
+                name: name,
+                itemStyle: {
+                    color: colors[index]
+                }
+            }));
+
+            const option = {
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(15, 40, 71, 0.9)',
+                    borderColor: '#4cc9f0',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 14
+                    },
+                    formatter: '{b}: {c}%'
+                },
+                legend: {
+                    data: points,
+                    textStyle: {
+                        color: '#94a3b8',
+                        fontSize: 12
+                    },
+                    left: 'left'
+                },
+                series: [
+                    {
+                        name: '空气达标率',
+                        type: 'pie',
+                        radius: ['30%', '70%'],
+                        center: ['60%', '50%'],
+                        data: data,
+                        label: {
+                            show: false
+                        },
+                        labelLine: {
+                            show: false
+                        }
+                    }
+                ],
+                graphic: [
+                    {
+                        type: 'text',
+                        left: '60%',
+                        top: '50%',
+                        style: {
+                            text: '达标率',
+                            textAlign: 'center',
+                            fill: '#fff',
+                            fontSize: 16,
+                            fontWeight: 'bold'
+                        }
+                    }
+                ]
+            };
+            complianceChart.setOption(option);
+        }
+
+        // 更新所有数据
+        function updateAllData() {
+            updateOdorChart();
+            updateOnlineRateChart();
+            updateSatisfactionChart();
+            updateMap();
+            updateUsageChart();
+            updateAirQualityChart();
+            updateDeviceChart();
+            updateComplianceChart();
+
+            // 更新设备状态数值
+            document.getElementById('alarm-count').textContent = Math.floor(Math.random() * 20) + 90;
+            document.getElementById('handled-count').textContent = Math.floor(Math.random() * 15) + 85;
+            document.getElementById('avg-time').textContent = Math.floor(Math.random() * 3) + 1;
+        }
+
+        // 更新实时时间
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            document.getElementById('current-time').textContent = timeString;
+        }
+
+        // 初始化
+        window.onload = function() {
+            initCharts();
+            updateTime();
+
+            // 设置定时器：每秒更新时间，每3分钟更新数据
+            setInterval(updateTime, 1000);
+            setInterval(updateAllData, 3 * 60 * 1000); // 3分钟 = 180000毫秒
+            
+            // 窗口大小变化时重新缩放
+            window.addEventListener('resize', scaleDashboard);
+        };
+    </script>
+</body>
+</html>
