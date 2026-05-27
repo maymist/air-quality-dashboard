@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>深圳离线地图看板</title>
+  <!-- 本地引用Leaflet样式 -->
+  <link rel="stylesheet" href="./leaflet/leaflet.css" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #f5f7fa;
+    }
+    .map-container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 20px auto;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 20px;
+    }
+    .map-title {
+      text-align: center;
+      font-size: 24px;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 20px;
+    }
+    /* 地图容器必须有明确宽高 */
+    #map {
+      width: 100%;
+      height: 700px;
+      border-radius: 8px;
+    }
+    /* 自定义区域样式 */
+    .district {
+      fill: #e0f2fe;
+      stroke: #0284c7;
+      stroke-width: 2;
+      fill-opacity: 0.7;
+      transition: all 0.2s ease;
+    }
+    .district:hover {
+      fill: #bae6fd;
+      fill-opacity: 0.9;
+    }
+    /* 隐藏Leaflet默认控件（可选） */
+    .leaflet-control-zoom,
+    .leaflet-control-attribution {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="map-container">
+    <h2 class="map-title">深圳市行政区划图</h2>
+    <div id="map"></div>
+  </div>
+
+  <!-- 本地引用Leaflet脚本 -->
+  <script src="./leaflet/leaflet.js"></script>
+  <script>
+    // 初始化地图（深圳中心点坐标）
+    const map = L.map('map', {
+      center: [22.5431, 114.0579],
+      zoom: 10,
+      minZoom: 9,   // 限制最小缩放
+      maxZoom: 12,  // 限制最大缩放（不需要更高级别）
+      zoomControl: false,  // 禁用缩放按钮
+      attributionControl: false  // 隐藏版权信息
+    });
+
+    // 本地加载深圳GeoJSON数据
+    fetch('./shenzhen.json')
+      .then(response => response.json())
+      .then(data => {
+        // 渲染行政区划
+        L.geoJSON(data, {
+          style: function(feature) {
+            return {
+              className: 'district',
+              // 可以给不同区域设置不同颜色
+              // if (feature.properties.name === '南山区') return { fill: '#dcfce7' }
+            };
+          },
+          onEachFeature: function(feature, layer) {
+            // 添加区域名称标签
+            layer.bindTooltip(feature.properties.name, {
+              permanent: true,
+              direction: 'center',
+              className: 'district-label',
+              offset: [0, 0]
+            });
+
+            // 添加点击事件（看板交互用）
+            layer.on('click', function() {
+              alert(`你点击了：${feature.properties.name}`);
+              // 这里可以写你的看板逻辑，比如显示该区域的数据
+            });
+          }
+        }).addTo(map);
+
+        // 自动调整地图视野，刚好显示整个深圳
+        map.fitBounds(L.geoJSON(data).getBounds(), { padding: [20, 20] });
+      })
+      .catch(error => console.error('地图数据加载失败:', error));
+  </script>
+</body>
+</html>
